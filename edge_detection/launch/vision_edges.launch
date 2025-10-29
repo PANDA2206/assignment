@@ -1,0 +1,41 @@
+<launch>
+  <!-- Use bag time if playing a bag -->
+  <param name="use_sim_time" value="true"/>
+
+  <node pkg="edge_detection" type="edge_from_rgbd_node.py" name="edge_from_rgbd" output="screen">
+    <param name="rgb_topic"    value="/camera/color/image_raw"/>
+    <param name="depth_topic"  value="/camera/depth/image_rect_raw"/>
+    <param name="camera_info"  value="/camera/depth/camera_info"/>
+    <param name="cloud_topic"  value="/edge_points"/>
+    <param name="edge_on_rgb" value="true"/>
+<param name="canny_low" value="120.0"/>
+<param name="canny_high" value="280.0"/>
+<param name="min_depth" value="0.7"/>
+<param name="max_depth" value="1.2"/>
+<param name="roi_pad_px" value="12"/>
+<param name="min_component_pixels" value="50"/>
+    <!-- <param name="frame_override" value="camera_link"/> -->
+  </node>
+  
+ <!-- Provide a robot↔camera transform (bag doesn't have it) -->
+  <!-- identity TF: base_link -> camera_depth_optical_frame -->
+   <node pkg="tf2_ros" type="static_transform_publisher" name="cam_in_root"
+        args="0.5352193017 -0.30108668167 0.80354829787 -0.52664349092 0.81634598398 -0.22644530018 0.07033973602 root_link camera_depth_optical_frame"/>
+
+
+
+  <!-- Your existing marker visualizer -->
+  <!-- Markers from /edge_points -->
+  <node pkg="edge_detection" type="edge_markers_node.py" name="edge_markers_node" output="screen">
+    <!-- match your node's param names -->
+    <param name="cloud_topic"  value="/edge_points"/>
+    <param name="target_frame" value="root_link"/>   <!-- will work thanks to static TF -->
+    <param name="scale"   value="0.03"/>
+    <param name="stride"       value="2"/>
+    <param name="max_points"   value="30000"/>
+    <param name="lifetime"     value="0.10"/>
+    <param name="z_colorize"   value="false"/>
+  </node>
+
+</launch>
+

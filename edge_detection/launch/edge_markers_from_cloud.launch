@@ -1,0 +1,35 @@
+<launch>
+  <!-- Option A: use an existing cloud and relay it to /edge_points -->
+  <!--node pkg="topic_tools" type="relay" name="relay_edge_points" output="screen" args="/camera/depth_registered/points /edge_points"/-->
+
+  <!-- Edge markers visualizer -->
+  <node pkg="edge_detection" type="edge_markers_node.py" name="edge_markers_node" output="screen">
+    <!-- The node expects ~cloud_topic, not input_cloud -->
+    <param name="cloud_topic"   value="/edge_points"/>
+
+    <!-- The node publishes to "~markers". To change the visible topic name, remap it: -->
+    <remap from="~markers" to="edge_markers_node/markers"/>
+
+    <!-- Namespace on the Marker messages (we added marker_ns in code) -->
+    <param name="marker_ns"     value="edges"/>
+
+    <!-- Size of the points (param is ~scale in meters) -->
+    <param name="scale"         value="0.006"/>
+
+    <!-- Lifetime of markers (seconds). If you meant transparency, alpha isn’t a param in code.
+         Keep alpha out unless you’ve added support. -->
+    <param name="lifetime"      value="0.2"/>
+
+    <!-- Force visualization frame (node uses ~target_frame) -->
+    <param name="target_frame"  value="camera_color_optical_frame"/>
+
+    <!-- Optional: stride & max_points to throttle rendering -->
+    <param name="stride"        value="6"/>
+    <param name="max_points"    value="1500"/>
+
+    <!-- If your node supports z_colorize -->
+    <param name="z_colorize"    value="false"/>
+  </node>
+</launch>
+
+

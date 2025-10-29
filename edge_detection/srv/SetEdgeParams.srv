@@ -1,0 +1,32 @@
+# Edge detection parameters
+float32 canny_low
+float32 canny_high
+int32   stride
+float32 min_depth
+float32 max_depth
+
+# Checkerboard detection parameters
+bool use_checkerboard      # Whether to use checkerboard detection
+int32 checker_rows        # Number of interior corners in rows
+int32 checker_cols        # Number of interior corners in columns
+
+# Batch processing parameters
+string directory          # Directory to process (empty for live stream)
+bool save_outputs         # Whether to save output images
+---
+# Response
+bool ok                   # Operation success status
+edge_detection/EdgeDetectionResult[] results  # Results for batch processing
+
+
+
+
+
+
+
+
+
+
+
+
+
