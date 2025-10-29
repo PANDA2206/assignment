@@ -3,9 +3,9 @@
 This repository contains a reference implementation for the edge-detection coding challenge.  It provides a robust, modular image processing pipeline, ROS integrations for RGB-D data, and automation helpers so the different evaluation tasks can be reproduced quickly.
 
 - **Basic task** – run the standalone edge detector against still images, optionally saving overlays.
-- **Vision_ROS task** – consume RGB-D frames from bag files, publish edge overlays, and produce 3D edge point clouds.
+- **Vision_ROS task** – consume RGB or RGB-D frames from bag files, publish edge overlays, and produce 3D edge point clouds.
 - **Robot_ROS task** – visualise edge points alongside the robot model in RViz.
-- **Advanced** – run every element above end-to-end.
+- **Advanced** – run every element above end-to-end.  See the `result/` folder for demo recordings generated with these scripts.
 
 
 ## 1. Prerequisites
@@ -28,25 +28,30 @@ source <workspace>/devel/setup.bash
 ## 2. Project layout
 
 ```
-edge_detection/
-├── data/                     # Sample images & results folder
-├── launch/                   # ROS launch files
-├── msg/, srv/                # Message/service definitions for ROS tasks
-├── scripts/                  # Core edge detector + utility nodes
-│   ├── edge_detector.py      # Standalone CLI & library entry point
-│   ├── edge_from_rgbd_node.py# RGB-D processing node (Vision_ROS)
-│   ├── edge_markers_node.py  # RViz marker publisher (Robot_ROS)
-│   ├── edge_service_node.py  # Edge detection service entry point
-│   ├── process_manager.py    # Shared helper for automation scripts
-│   ├── ros_task_manager.py   # Automates Robot_ROS workflow
-│   └── vision_task_manager.py# Automates Vision_ROS workflow
-└── include/, src/            # C++ stubs (if you port the pipeline)
+.
+├── README.md
+├── edge_detection/
+│   ├── CMakeLists.txt
+│   ├── launch/                   # ROS launch files
+│   ├── msg/                      # Message definitions
+│   ├── scripts/
+│   │   ├── edge_detector.py      # Standalone CLI & library entry point
+│   │   ├── edge_from_rgbd_node.py# RGB-D processing node (Vision_ROS)
+│   │   └── edge_markers_node.py  # RViz marker publisher (Robot_ROS)
+│   └── srv/                      # Service definitions
+├── manager_node.py               # Unified CLI wrapper (select ROS workflow)
+├── process_manager.py            # Shared process orchestration helpers
+├── ros_task_manager.py           # Robot_ROS automation script
+├── vision_task_manager.py        # Vision_ROS automation script
+└── result/                       # Sample run recordings (.webm)
 ```
+
+> **Note:** The sample dataset under `edge_detection/data/` is now part of the repository so you can run the demos immediately after cloning. The optional C++ headers in `edge_detection/include/` are still git-ignored—copy them in locally if you port the pipeline to C++.
 
 
 ## 3. Basic edge detection workflow
 
-The `scripts/edge_detector.py` CLI accepts either a single image or an entire directory.
+The `edge_detection/scripts/edge_detector.py` CLI accepts either a single image or an entire directory.
 
 ```bash
 # Run on the sample dataset and save binary edge masks
@@ -80,20 +85,20 @@ overlay = det.draw_edges_green(image, edges)
 
 ## 4. ROS automation helpers
 
-Running the ROS pipelines normally requires four separate terminals.  The manager scripts in `scripts/` launch the same stack programmatically and keep every process in sync.  Both helpers expect that the workspace and ROS distribution setup scripts are available.
+Running the ROS pipelines normally requires four separate terminals.  The manager scripts at the repository root launch the same stack programmatically and keep every process in sync.  Both helpers expect that the workspace and ROS distribution setup scripts are available.
 
 ### 4.0 Unified manager node
 
-Prefer a single entry point that mirrors the sample code snippet you shared? Use `scripts/manager_node.py` to select either workflow:
+Prefer a single entry point that mirrors the sample code snippet you shared? Use the root-level `manager_node.py` to select either workflow:
 
 ```bash
-python3 scripts/manager_node.py \
+python3 manager_node.py \
   --mode ros \
   --workspace-setup ~/catkin_workspace/devel/setup.bash \
   --bag-file /home/pankaj/Desktop/withpointcloud.bag \
   --start-relay
 
-python3 scripts/manager_node.py \
+python3 manager_node.py \
   --mode vision \
   --workspace-setup ~/catkin_workspace/devel/setup.bash \
   --bag-file /home/pankaj/Desktop/withoutpointcloud.bag
@@ -104,7 +109,7 @@ The CLI matches the example structure—arguments are parsed upfront and forward
 ### 4.1 Robot_ROS pipeline (RGB-D → RViz markers)
 
 ```bash
-python3 scripts/ros_task_manager.py \
+python3 ros_task_manager.py \
   --workspace-setup ~/catkin_workspace/devel/setup.bash \
   --bag-file /home/pankaj/Desktop/withpointcloud.bag \
   --start-relay
@@ -124,7 +129,7 @@ Press `Ctrl+C` to stop; the script tears every subprocess down in reverse order.
 ### 4.2 Vision_ROS pipeline (RGB frames → edge overlays)
 
 ```bash
-python3 scripts/vision_task_manager.py \
+python3 vision_task_manager.py \
   --workspace-setup ~/catkin_workspace/devel/setup.bash \
   --bag-file /home/pankaj/Desktop/withoutpointcloud.bag
 ```
@@ -160,7 +165,18 @@ roslaunch edge_detection vision_edges.launch
 ```
 
 
-## 6. Algorithm overview
+## 6. Results
+
+The `result/` directory contains screen captures from the automated workflows:
+
+- `ros_task1.webm` – Robot_ROS run showing the robot model and edge markers in RViz.
+- `ros_task2.webm` – Robot_ROS run with the synchronized camera view.
+- `vision_task1.webm` – Vision_ROS run highlighting the edge overlays in RViz.
+- `vision_task2.webm` – Vision_ROS run focused on the RGB playback stream.
+- `camera_edge_view.webm` – Combined camera feed with edge overlays for quick review.
+
+
+## 7. Algorithm overview
 
 The `EdgeDetector` class follows a multi-stage pipeline tuned for checkerboard imagery:
 
@@ -173,15 +189,15 @@ The `EdgeDetector` class follows a multi-stage pipeline tuned for checkerboard i
 Parameters are exposed through CLI switches and ROS dynamic reconfigure hooks so you can trade off sensitivity vs. noise suppression per dataset.
 
 
-## 7. Extending or customising
+## 8. Extending or customising
 
 - **Additional filters:** Drop new gradient operators into `EdgeDetector.VALID_METHODS` and extend the dispatch table.
-- **Service/API integration:** The ROS service defined in `srv/` demonstrates how to wrap the detector; client examples live in `scripts/edge_service_node.py`.
-- **Robot visualisation:** `scripts/edge_markers_node.py` shows how 3D edge points are published as `visualization_msgs/MarkerArray` objects.
+- **Service/API integration:** The ROS service defined in `srv/` demonstrates how to wrap the detector; wire it into a client in your own node.
+- **Robot visualisation:** `edge_detection/scripts/edge_markers_node.py` shows how 3D edge points are published as `visualization_msgs/MarkerArray` objects.
 - **Testing:** Add your own unit tests under `tests/` (not provided here) and run them with `pytest`.
 
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 - **`ModuleNotFoundError: cv2`** – install OpenCV for the active interpreter (`python3 -m pip install opencv-python`).
 - **`roslaunch` cannot find files** – ensure you sourced both `/opt/ros/noetic/setup.bash` and `<workspace>/devel/setup.bash` before launching.
@@ -189,7 +205,7 @@ Parameters are exposed through CLI switches and ROS dynamic reconfigure hooks so
 - **RViz shows no data** – verify `/edge_points` or image topics exist using `rostopic list`; if empty, confirm the bag file path and that `/use_sim_time` is set.
 
 
-## 9. Roadmap / possible improvements
+## 10. Roadmap / possible improvements
 
 - Add automated tests for the multi-scale Canny thresholds and blob cleanup heuristics.
 - Port the Python pipeline to C++ to match the challenge’s preferred language.
