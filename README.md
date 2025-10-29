@@ -1,6 +1,6 @@
 # Vision Programming Challenge – Edge Detection Toolkit
 
-This repository contains a reference implementation for the edge-detection coding challenge.  It provides a robust, modular image processing pipeline, ROS integrations for RGB-D data, and automation helpers so the different evaluation tasks can be reproduced quickly.
+This repository provides a reference implementation for edge detection, featuring a modular image-processing pipeline, ROS integrations for RGB-D data, and automation helpers—primarily the manager_node—so evaluation tasks can be reproduced quickly.
 
 - **Basic task** – run the standalone edge detector against still images, optionally saving overlays.
 - **Vision_ROS task** – consume RGB or RGB-D frames from bag files, publish edge overlays, and produce 3D edge point clouds.
@@ -32,6 +32,8 @@ source <workspace>/devel/setup.bash
 ├── README.md
 ├── edge_detection/
 │   ├── CMakeLists.txt
+│   ├── data/
+│   │   ├── results               # edge_detection result
 │   ├── launch/                   # ROS launch files
 │   ├── msg/                      # Message definitions
 │   ├── scripts/
@@ -46,7 +48,6 @@ source <workspace>/devel/setup.bash
 └── result/                       # Sample run recordings (.webm)
 ```
 
-> **Note:** The sample dataset under `edge_detection/data/` is now part of the repository so you can run the demos immediately after cloning. The optional C++ headers in `edge_detection/include/` are still git-ignored—copy them in locally if you port the pipeline to C++.
 
 
 ## 3. Basic edge detection workflow
@@ -73,17 +74,20 @@ Key switches:
 - `--nlm-h` – add non-local means denoising before Canny (set to 0 to disable).
 - `--save-overlay` – write an RGB copy with the detected edges painted bright green.
 
-The Python module can also be imported and used programmatically:
 
-```python
-from edge_detector import EdgeDetector
-det = EdgeDetector(method="canny", auto_threshold=True)
-edges = det.detect_edges(image)
-overlay = det.draw_edges_green(image, edges)
-```
+The `EdgeDetector` class follows a multi-stage pipeline tuned for checkerboard imagery:
+
+1. **Multiple detction method** – canny,sobel,lapacian,schaar and method included
+2. **Contrast & denoise** – optional CLAHE, configurable Gaussian/median/bilateral filtering, plus fast non-local means for stubborn sensor noise.
+3. **Adaptive thresholds** – gradient statistics yield robust high/low bounds even across lighting changes.
+4. **Multi-scale Canny** – fine and coarse responses are fused, ensuring thin lines are retained without losing global contours.
+5. **Morphology & cleanup** – close gaps, remove isolated blobs using relative/absolute area thresholds, and thin the result for crisp overlays.
+6. **Optional thinning/overlay** – skeletonise edges and paint them bright green on the original RGB frame when requested.
+
+Parameters are exposed through CLI switches and ROS dynamic reconfigure hooks so you can trade off sensitivity vs. noise suppression per dataset
 
 
-## 4. ROS automation helpers
+## 4. ROS automation helpers for ros_task and vision_task both
 
 Running the ROS pipelines normally requires four separate terminals.  The manager scripts at the repository root launch the same stack programmatically and keep every process in sync.  Both helpers expect that the workspace and ROS distribution setup scripts are available.
 
@@ -95,13 +99,13 @@ Prefer a single entry point that mirrors the sample code snippet you shared? Use
 python3 manager_node.py \
   --mode ros \
   --workspace-setup ~/catkin_workspace/devel/setup.bash \
-  --bag-file /home/pankaj/Desktop/withpointcloud.bag \
+  --bag-file /path/withpointcloud.bag \
   --start-relay
 
 python3 manager_node.py \
   --mode vision \
   --workspace-setup ~/catkin_workspace/devel/setup.bash \
-  --bag-file /home/pankaj/Desktop/withoutpointcloud.bag
+  --bag-file /path/withoutpointcloud.bag
 ```
 
 The CLI matches the example structure—arguments are parsed upfront and forwarded to the appropriate manager.
@@ -111,7 +115,7 @@ The CLI matches the example structure—arguments are parsed upfront and forward
 ```bash
 python3 ros_task_manager.py \
   --workspace-setup ~/catkin_workspace/devel/setup.bash \
-  --bag-file /home/pankaj/Desktop/withpointcloud.bag \
+  --bag-file /path/withpointcloud.bag \
   --start-relay
 ```
 
@@ -131,7 +135,7 @@ Press `Ctrl+C` to stop; the script tears every subprocess down in reverse order.
 ```bash
 python3 vision_task_manager.py \
   --workspace-setup ~/catkin_workspace/devel/setup.bash \
-  --bag-file /home/pankaj/Desktop/withoutpointcloud.bag
+  --bag-file /path/withoutpointcloud.bag
 ```
 
 This launches the same robot model, replays the RGB-only bag, and runs `vision_edges.launch` to visualise the detected edges in RViz.  The same flags for `--gripper-name`, `--publish-joint-state`, `--publish-robot-state`, and `--rosbag-extra-args` are available.
@@ -162,54 +166,18 @@ rosbag play --clock -l /path/to/withoutpointcloud.bag
 
 # Terminal 4 (Vision_ROS)
 roslaunch edge_detection vision_edges.launch
+
+# Terminal 5 (Robot_ROS)
+rosrun topic_tools relay /camera/depth_registered/points /edge_points
 ```
 
 
+
+
 ## 6. Results
-
 The `result/` directory contains screen captures from the automated workflows:
-
 - `ros_task1.webm` – Robot_ROS run showing the robot model and edge markers in RViz.
 - `ros_task2.webm` – Robot_ROS run with the synchronized camera view.
 - `vision_task1.webm` – Vision_ROS run highlighting the edge overlays in RViz.
 - `vision_task2.webm` – Vision_ROS run focused on the RGB playback stream.
 - `camera_edge_view.webm` – Combined camera feed with edge overlays for quick review.
-
-
-## 7. Algorithm overview
-
-The `EdgeDetector` class follows a multi-stage pipeline tuned for checkerboard imagery:
-
-1. **Contrast & denoise** – optional CLAHE, configurable Gaussian/median/bilateral filtering, plus fast non-local means for stubborn sensor noise.
-2. **Adaptive thresholds** – gradient statistics yield robust high/low bounds even across lighting changes.
-3. **Multi-scale Canny** – fine and coarse responses are fused, ensuring thin lines are retained without losing global contours.
-4. **Morphology & cleanup** – close gaps, remove isolated blobs using relative/absolute area thresholds, and thin the result for crisp overlays.
-5. **Optional thinning/overlay** – skeletonise edges and paint them bright green on the original RGB frame when requested.
-
-Parameters are exposed through CLI switches and ROS dynamic reconfigure hooks so you can trade off sensitivity vs. noise suppression per dataset.
-
-
-## 8. Extending or customising
-
-- **Additional filters:** Drop new gradient operators into `EdgeDetector.VALID_METHODS` and extend the dispatch table.
-- **Service/API integration:** The ROS service defined in `srv/` demonstrates how to wrap the detector; wire it into a client in your own node.
-- **Robot visualisation:** `edge_detection/scripts/edge_markers_node.py` shows how 3D edge points are published as `visualization_msgs/MarkerArray` objects.
-- **Testing:** Add your own unit tests under `tests/` (not provided here) and run them with `pytest`.
-
-
-## 9. Troubleshooting
-
-- **`ModuleNotFoundError: cv2`** – install OpenCV for the active interpreter (`python3 -m pip install opencv-python`).
-- **`roslaunch` cannot find files** – ensure you sourced both `/opt/ros/noetic/setup.bash` and `<workspace>/devel/setup.bash` before launching.
-- **Bag playback too fast** – change `--rosbag-extra-args` to `--clock --rate 0.5` (or pass `--pause`).
-- **RViz shows no data** – verify `/edge_points` or image topics exist using `rostopic list`; if empty, confirm the bag file path and that `/use_sim_time` is set.
-
-
-## 10. Roadmap / possible improvements
-
-- Add automated tests for the multi-scale Canny thresholds and blob cleanup heuristics.
-- Port the Python pipeline to C++ to match the challenge’s preferred language.
-- Provide Docker images pre-configured with ROS Noetic, the workspace, and sample bag files.
-- Integrate dynamic reconfigure for live parameter tuning during ROS playback.
-
-Happy hacking!  If you run into issues, capture the CLI output and the commands used so we can reproduce and assist.
